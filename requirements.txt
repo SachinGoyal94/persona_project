@@ -1,0 +1,15 @@
+python-dotenv
+mysql-connector-python
+SQLAlchemy
+fastapi
+pydantic
+uvicorn
+tenacity
+sqlalchemy
+pymysql
+python-multipart
+PyJWT
+google-generativeai
+certifi
+passlib[bcrypt]==1.7.4
+jose
