@@ -31,7 +31,7 @@ Users can:
 ✔ Enjoy a simple UI  
 
 ## 🧠 Multi-Agent Architecture
-![img.png](img.png)
+![architecture.png](architecture.png)
 
 ## 🛠 Tech Stack
 - Streamlit (Frontend)
@@ -67,11 +67,15 @@ backend/
 │── schemas.py
 │── agents.py
 │── utils.py
+│── create.sql
 
 frontend/
 │── app.py
 
 README.md
+architecture.png
+requirements.txt
+.env
 ```
 
 ## 💾 Database Schema (MySQL)
