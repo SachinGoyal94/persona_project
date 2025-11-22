@@ -3,186 +3,114 @@ from datetime import datetime
 import os
 from database import get_db_conn
 
-# Configure Google Gemini API
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 
-# ======================================================
-# 📌 1. Context Manager Agent – HIGH QUALITY SUMMARY
-# ======================================================
-
+# ------------------ Context Agent ------------------
 class ContextManagerAgent:
     def __init__(self, model="gemini-2.0-flash"):
         self.model = genai.GenerativeModel(model)
 
     def build_context(self, history):
-        """Builds a structured concise context from last messages"""
-        conv = ""
-        for h in history:
-            role = "User" if h["sender"] == "user" else "Character"
-            conv += f"{role}: {h['message']}\n"
+        text = "\n".join([f"{h['sender']}: {h['message']}" for h in history])
 
         prompt = f"""
-        You are a high-accuracy conversation summarizer.
-
-        Summarize the conversation in **3–5 bullet points**.
-
-        Rules:
-        - Keep only important context and key emotional cues.
-        - Preserve character personality hints.
-        - Do NOT invent new information.
-        - MUST return ONLY bullet points.
+        Summarize this chat conversation in 3–4 sentences.
+        Do NOT invent facts.
 
         Conversation:
-        {conv}
+        {text}
         """
+        res = self.model.generate_content(prompt)
+        return res.text.strip()
 
-        response = self.model.generate_content(prompt)
-        return response.text.strip()
 
-
-# ======================================================
-# 📌 2. Character Agent – 100% IN-CHARACTER Replies
-# ======================================================
-
+# ------------------ Character Agent ------------------
 class CharacterAgent:
-    def __init__(self, character_name, tone="neutral", model="gemini-2.0-flash"):
+    def __init__(self, character_name, tone="friendly", model="gemini-2.0-flash"):
         self.character_name = character_name
         self.tone = tone
         self.model = genai.GenerativeModel(model)
 
     def reply(self, context_summary, user_msg):
         prompt = f"""
-        You are role-playing as **{self.character_name}**.
+        You are {self.character_name}.
+        Tone: {self.tone}.
 
-        STRICT RULES:
-        - Stay 100% in character at all times.
-        - Speak exactly how {self.character_name} would.
-        - Maintain tone: **{self.tone}**.
-        - No AI disclaimers. No "as an AI".
-        - No breaking the fourth wall.
-        - Use natural conversation style.
+        Stay completely in character.
+        No breaking the fourth wall.
 
-        CONTEXT SUMMARY:
+        Context Summary:
         {context_summary}
 
-        USER MESSAGE:
-        "{user_msg}"
+        User: {user_msg}
 
-        Respond as {self.character_name}.
+        Reply as {self.character_name}.
         """
+        res = self.model.generate_content(prompt)
+        return res.text.strip()
 
-        response = self.model.generate_content(prompt)
-        return response.text.strip()
 
-
-# ======================================================
-# 📌 3. Moderator Agent – Clean, Safe, Polished Output
-# ======================================================
-
+# ------------------ Moderator Agent ------------------
 class ModeratorAgent:
     def __init__(self, model="gemini-2.0-flash"):
         self.model = genai.GenerativeModel(model)
 
     def check(self, reply):
         prompt = f"""
-        You are a refinement and safety agent.
+        Clean this reply:
+        - No hallucinations
+        - Keep same tone & personality
+        - Remove unsafe content
 
-        Improve this reply following these rules:
-        - Remove hallucinations.
-        - Remove unsafe, toxic, or irrelevant content.
-        - Maintain emotional intent of the reply.
-        - Keep the character's personality consistent.
-        - Improve clarity & coherence.
-        - Do NOT remove important information.
-
-        ORIGINAL REPLY:
         {reply}
-
-        Return the cleaned final reply only.
         """
+        res = self.model.generate_content(prompt)
+        return res.text.strip()
 
-        response = self.model.generate_content(prompt)
-        return response.text.strip()
 
-
-# ======================================================
-# 📌 4. Database Helper Functions (MySQL)
-# ======================================================
-
+# ------------------ Helpers ------------------
 def fetch_last_messages_api(persona_id, limit=10):
-    """Retrieve last N messages for a persona"""
+    limit = max(3, min(limit, 30))  # safety
+
     conn = get_db_conn()
     cursor = conn.cursor(dictionary=True)
 
-    cursor.execute(
-        """
-        SELECT sender, message
-        FROM persona_messages
-        WHERE persona_id = %s
-        ORDER BY id DESC
-            LIMIT %s
-        """,
-        (persona_id, limit),
-    )
+    cursor.execute("""
+        SELECT sender, message FROM persona_messages
+        WHERE persona_id=%s ORDER BY id DESC LIMIT %s
+    """, (persona_id, limit))
 
     rows = cursor.fetchall()
 
     cursor.close()
     conn.close()
 
-    # Reverse so newest is last (natural flow)
     return list(reversed(rows))
 
 
 def save_message_api(persona_id, sender, message):
-    """Stores a message into persona_messages table"""
     conn = get_db_conn()
     cursor = conn.cursor()
 
-    cursor.execute(
-        """
+    cursor.execute("""
         INSERT INTO persona_messages (persona_id, sender, message, created_at)
         VALUES (%s, %s, %s, NOW())
-        """,
-        (persona_id, sender, message),
-    )
+    """, (persona_id, sender, message))
 
     conn.commit()
     cursor.close()
     conn.close()
 
 
-# ======================================================
-# 📌 5. FINAL MULTI-AGENT PIPELINE
-# ======================================================
-
 class MultiAgentPipeline:
     def __init__(self, character_name, tone):
-        self.ctx_agent = ContextManagerAgent()
-        self.character_agent = CharacterAgent(character_name, tone)
-        self.moderator_agent = ModeratorAgent()
+        self.ctx = ContextManagerAgent()
+        self.char = CharacterAgent(character_name, tone)
+        self.mod = ModeratorAgent()
 
-    def run(self, persona_id, user_message):
-        """
-        Full pipeline:
-        1. fetch chat history from DB
-        2. summarize context
-        3. generate character reply
-        4. moderate & clean reply
-        5. return final output
-        """
-
-        # Step 1: Get last 10 messages
+    def run(self, persona_id, user_msg):
         history = fetch_last_messages_api(persona_id)
-
-        # Step 2: Build context
-        context_summary = self.ctx_agent.build_context(history)
-
-        # Step 3: Character speaks
-        raw_reply = self.character_agent.reply(context_summary, user_message)
-
-        # Step 4: Clean with moderator
-        final_reply = self.moderator_agent.check(raw_reply)
-
-        return final_reply
+        ctx = self.ctx.build_context(history)
+        raw = self.char.reply(ctx, user_msg)
+        return self.mod.check(raw)

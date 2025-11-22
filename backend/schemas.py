@@ -13,7 +13,7 @@ class UserLogin(BaseModel):
 class PersonaCreate(BaseModel):
     user_id: int
     character_name: str
-    mode: str = "auto"
+    mode: str
     tone: Optional[str] = None
     summary: Optional[str] = None
 
@@ -27,7 +27,6 @@ class PersonaOut(BaseModel):
     created_at: datetime
 
 class MessageCreate(BaseModel):
-    user_id: int
     persona_id: int
     sender: str
     message: str
