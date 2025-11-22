@@ -1,0 +1,7 @@
+DB_HOST="database_host"
+DB_PASSWORD="db_password"
+DB_USER="ROOT USER"
+DB_NAME="PROJECT_NAME"
+DB_PORT="PORT"
+GOOGLE_API_KEY="GEMINI API KEY"
+DB_CA="database_ca"
